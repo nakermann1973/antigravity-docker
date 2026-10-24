@@ -10,7 +10,8 @@ const {
     isStreamGenerateContent,
     isGenerateContent,
     isFetchAvailableModels,
-    injectAvailableModels
+    injectAvailableModels,
+    applyTierOverrides
 } = require('../proxy/translation-proxy');
 const { EMPTY_COMPLETION_FALLBACK_TEXT } = require('../proxy/lib/transcoder');
 
@@ -459,7 +460,7 @@ test('Translation Proxy - isFetchAvailableModels and injectAvailableModels helpe
     assert.deepEqual(injectAvailableModels({}, null), {});
     assert.deepEqual(injectAvailableModels({ foo: 1 }, { getInjectedModels: () => [] }), { foo: 1 });
 
-    // Upgrades tieredModelIds.pro to gemini-4-argon-medium even when modelsManager is null or empty
+    // Preserves default tieredModelIds when no MODEL_TIER_<TIER> environment variables are set
     const tieredInput = {
         models: {
             'gemini-3.8-flash-tiered': { displayName: null, model: 'MODEL_PLACEHOLDER_M322' },
@@ -471,20 +472,38 @@ test('Translation Proxy - isFetchAvailableModels and injectAvailableModels helpe
             pro: ['gemini-3.8-flash-tiered']
         }
     };
-    const tieredResult = injectAvailableModels(tieredInput, null);
-    assert.deepEqual(tieredResult.tieredModelIds.pro, ['gemini-4-argon-medium']);
-    assert.deepEqual(tieredResult.tieredModelIds.flash, ['gemini-3.8-flash-tiered']);
+    const defaultResult = injectAvailableModels(JSON.parse(JSON.stringify(tieredInput)), null);
+    assert.deepEqual(defaultResult.tieredModelIds.pro, ['gemini-3.8-flash-tiered']);
+    assert.deepEqual(defaultResult.tieredModelIds.flash, ['gemini-3.8-flash-tiered']);
+    assert.deepEqual(defaultResult.tieredModelIds.flashLite, ['gemini-3.5-flash-lite']);
 
-    // Falls back to gemini-4-argon-high when gemini-4-argon-medium is absent
-    const highFallbackInput = {
-        models: {
-            'gemini-4-argon-high': { displayName: 'Gemini 4 Argon (High)', model: 'MODEL_PLACEHOLDER_M417' }
-        },
-        tieredModelIds: {
-            pro: ['gemini-3.8-flash-tiered']
-        }
+    // Overrides tieredModelIds.pro when MODEL_TIER_PRO is explicitly set
+    process.env.MODEL_TIER_PRO = 'gemini-4-argon-medium';
+    const proResult = injectAvailableModels(JSON.parse(JSON.stringify(tieredInput)), null);
+    assert.deepEqual(proResult.tieredModelIds.pro, ['gemini-4-argon-medium']);
+    delete process.env.MODEL_TIER_PRO;
+
+    // Overrides tieredModelIds.flash_lite / flashLite when MODEL_TIER_FLASH_LITE is set to a custom model
+    process.env.MODEL_TIER_FLASH_LITE = 'qwen2.5-coder-7b';
+    const mockCustomManager = {
+        getInjectedModels: () => [
+            {
+                rawModelId: 'qwen2.5-coder-7b',
+                modelId: 'custom-openai-qwen2.5-coder-7b',
+                label: 'qwen2.5-coder-7b',
+                modelOrAlias: { model: 'MODEL_PLACEHOLDER_M528' }
+            }
+        ]
     };
-    assert.deepEqual(injectAvailableModels(highFallbackInput, { getInjectedModels: () => [] }).tieredModelIds.pro, ['gemini-4-argon-high']);
+    const flashLiteResult = injectAvailableModels(JSON.parse(JSON.stringify(tieredInput)), mockCustomManager);
+    assert.deepEqual(flashLiteResult.tieredModelIds.flashLite, ['MODEL_PLACEHOLDER_M528']);
+    delete process.env.MODEL_TIER_FLASH_LITE;
+
+    // Ignores MODEL_TIER_<TIER> when target model does not exist in custom or built-in models
+    process.env.MODEL_TIER_FLASH = 'non-existent-model';
+    const missingResult = injectAvailableModels(JSON.parse(JSON.stringify(tieredInput)), null);
+    assert.deepEqual(missingResult.tieredModelIds.flash, ['gemini-3.8-flash-tiered']);
+    delete process.env.MODEL_TIER_FLASH;
 });
 
 test('Translation Proxy - fetchAvailableModels HTTP Interception and Placeholder Resolution', async (t) => {
@@ -565,6 +584,7 @@ test('Translation Proxy - fetchAvailableModels HTTP Interception and Placeholder
     });
 
     await t.test('intercepts fetchAvailableModels and merges custom models', async () => {
+        process.env.MODEL_TIER_PRO = 'gemini-4-argon-medium';
         const res = await new Promise((resolve, reject) => {
             const req = http.request({
                 hostname: '127.0.0.1',
@@ -588,6 +608,8 @@ test('Translation Proxy - fetchAvailableModels HTTP Interception and Placeholder
             req.write(JSON.stringify({}));
             req.end();
         });
+
+        delete process.env.MODEL_TIER_PRO;
 
         assert.equal(res.statusCode, 200);
         assert.ok(upstreamCalled, 'Upstream must be called');

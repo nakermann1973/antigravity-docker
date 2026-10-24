@@ -71,7 +71,10 @@ services:
 | `ALLOWED_ORIGINS` | *(empty)* | Optional comma-separated list of allowed CORS origins. |
 | `CUSTOM_MODEL_TIMEOUT_SECONDS` | `600` | Optional global timeout in seconds for external model completion requests (default: 10 minutes). |
 | `CUSTOM_MODEL_TIMEOUT_MS` | *(empty)* | Optional global timeout in milliseconds (overrides `CUSTOM_MODEL_TIMEOUT_SECONDS`). |
-| `ENABLE_TRANSLATION_PROXY` | `true` | Enables the internal translation proxy (port `4405`) by default for model tier overrides (`pro` → Gemini 4 Argon) and custom model injection. |
+| `ENABLE_TRANSLATION_PROXY` | `true` | Enables the internal translation proxy (port `4405`) by default for model tier overrides and custom model injection. |
+| `MODEL_TIER_PRO` | *(empty)* | Optional model name to map to the `pro` tier (e.g. `gemini-4-argon-medium` or custom model ID). |
+| `MODEL_TIER_FLASH` | *(empty)* | Optional model name to map to the `flash` tier. |
+| `MODEL_TIER_FLASH_LITE` | *(empty)* | Optional model name to map to the `flash_lite` tier (e.g. `qwen2.5-coder-7b` for local subagent execution). |
 
 ### Volumes
 
