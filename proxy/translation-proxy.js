@@ -71,74 +71,97 @@ function isFetchAvailableModels(url) {
     return url.includes('fetchAvailableModels');
 }
 
+function resolveModelId(target, data, injected) {
+    const custom = injected.find(m => m.label === target || m.modelId === target || m.label?.startsWith(target));
+    return custom?.modelOrAlias?.model || (data.models?.[target] ? target : null);
+}
+
+function applyTierOverrides(data, injected = []) {
+    const tiered = data?.tieredModelIds;
+    if (!tiered || typeof tiered !== 'object') return;
+
+    const pro = process.env.MODEL_TIER_PRO?.trim();
+    if (pro) {
+        const id = resolveModelId(pro, data, injected);
+        if (id) tiered.pro = [id];
+    }
+
+    const flash = process.env.MODEL_TIER_FLASH?.trim();
+    if (flash) {
+        const id = resolveModelId(flash, data, injected);
+        if (id) tiered.flash = [id];
+    }
+
+    const flashLite = process.env.MODEL_TIER_FLASH_LITE?.trim();
+    if (flashLite) {
+        const id = resolveModelId(flashLite, data, injected);
+        if (id) tiered.flashLite = [id];
+    }
+}
+
 /**
  * Injects custom models configured in modelsManager into the fetchAvailableModels JSON response,
- * and upgrades tieredModelIds.pro to Gemini 4 Argon when available.
+ * and applies any configured MODEL_TIER_<TIER> environment overrides.
  */
 function injectAvailableModels(data, modelsManager) {
     if (!data || typeof data !== 'object') return data;
 
-    if (data.tieredModelIds && typeof data.tieredModelIds === 'object') {
-        const argonModelId = data.models?.['gemini-4-argon-medium']
-            ? 'gemini-4-argon-medium'
-            : (data.models?.['gemini-4-argon-high'] ? 'gemini-4-argon-high' : null);
-        if (argonModelId) {
-            data.tieredModelIds.pro = [argonModelId];
+    let injected = [];
+    if (modelsManager && typeof modelsManager.getInjectedModels === 'function') {
+        injected = modelsManager.getInjectedModels() || [];
+    }
+
+    if (injected.length > 0) {
+        data.models = data.models || {};
+
+        for (const m of injected) {
+            const placeholderEnum = m.modelOrAlias?.model;
+            if (!placeholderEnum) continue;
+
+            const budget = m.supportsThinking
+                ? (m.thinkingBudget || (THINKING_BUDGETS && THINKING_BUDGETS[m.thinkingLevel]) || 2048)
+                : 2048;
+
+            const supportsImages = m.supportsImages !== false;
+            const supportedMimeTypes = m.supportedMimeTypes || (supportsImages ? DEFAULT_SUPPORTED_MIME_TYPES : TEXT_ONLY_SUPPORTED_MIME_TYPES);
+
+            data.models[placeholderEnum] = {
+                displayName: m.label,
+                supportsImages: Boolean(supportsImages),
+                supportsThinking: Boolean(m.supportsThinking),
+                thinkingBudget: budget,
+                minThinkingBudget: 1024,
+                recommended: true,
+                maxTokens: 128000,
+                maxOutputTokens: 8192,
+                model: placeholderEnum,
+                quotaInfo: {
+                    remainingFraction: 1.0
+                },
+                supportedMimeTypes,
+                ...(m.tagTitle ? { tagTitle: m.tagTitle } : {}),
+                ...(m.tagDescription ? { tagDescription: m.tagDescription } : {})
+            };
+        }
+
+        if (!Array.isArray(data.agentModelSorts) || data.agentModelSorts.length === 0) {
+            data.agentModelSorts = [{ groups: [{ modelIds: [] }] }];
+        }
+        const sort = data.agentModelSorts[0];
+        if (!Array.isArray(sort.groups) || sort.groups.length === 0) {
+            sort.groups = [{ modelIds: [] }];
+        }
+        const group = sort.groups[0];
+        group.modelIds = group.modelIds || [];
+        for (const m of injected) {
+            const placeholderEnum = m.modelOrAlias?.model;
+            if (placeholderEnum && !group.modelIds.includes(placeholderEnum)) {
+                group.modelIds.push(placeholderEnum);
+            }
         }
     }
 
-    if (!modelsManager) return data;
-
-    const injected = modelsManager.getInjectedModels();
-    if (!injected || injected.length === 0) return data;
-
-    data.models = data.models || {};
-
-    for (const m of injected) {
-        const placeholderEnum = m.modelOrAlias?.model;
-        if (!placeholderEnum) continue;
-
-        const budget = m.supportsThinking
-            ? (m.thinkingBudget || (THINKING_BUDGETS && THINKING_BUDGETS[m.thinkingLevel]) || 2048)
-            : 2048;
-
-        const supportsImages = m.supportsImages !== false;
-        const supportedMimeTypes = m.supportedMimeTypes || (supportsImages ? DEFAULT_SUPPORTED_MIME_TYPES : TEXT_ONLY_SUPPORTED_MIME_TYPES);
-
-        data.models[placeholderEnum] = {
-            displayName: m.label,
-            supportsImages: Boolean(supportsImages),
-            supportsThinking: Boolean(m.supportsThinking),
-            thinkingBudget: budget,
-            minThinkingBudget: 1024,
-            recommended: true,
-            maxTokens: 128000,
-            maxOutputTokens: 8192,
-            model: placeholderEnum,
-            quotaInfo: {
-                remainingFraction: 1.0
-            },
-            supportedMimeTypes,
-            ...(m.tagTitle ? { tagTitle: m.tagTitle } : {}),
-            ...(m.tagDescription ? { tagDescription: m.tagDescription } : {})
-        };
-    }
-
-    if (!Array.isArray(data.agentModelSorts) || data.agentModelSorts.length === 0) {
-        data.agentModelSorts = [{ groups: [{ modelIds: [] }] }];
-    }
-    const sort = data.agentModelSorts[0];
-    if (!Array.isArray(sort.groups) || sort.groups.length === 0) {
-        sort.groups = [{ modelIds: [] }];
-    }
-    const group = sort.groups[0];
-    group.modelIds = group.modelIds || [];
-    for (const m of injected) {
-        const placeholderEnum = m.modelOrAlias?.model;
-        if (placeholderEnum && !group.modelIds.includes(placeholderEnum)) {
-            group.modelIds.push(placeholderEnum);
-        }
-    }
+    applyTierOverrides(data, injected);
 
     return data;
 }
@@ -754,5 +777,6 @@ module.exports = {
     isStreamGenerateContent,
     isGenerateContent,
     isFetchAvailableModels,
-    injectAvailableModels
+    injectAvailableModels,
+    applyTierOverrides
 };
