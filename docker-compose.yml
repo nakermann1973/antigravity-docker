@@ -27,3 +27,4 @@ services:
       - ./data/gemini:/home/developer/.gemini
       - ./data/ssh:/home/developer/.ssh
       - ./data/gitconfig:/home/developer/.gitconfig
+      # - ./init-scripts:/etc/entrypoint.d:ro

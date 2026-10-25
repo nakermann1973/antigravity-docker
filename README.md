@@ -84,6 +84,7 @@ services:
 | `<location-of-config>` | `/home/developer/.gemini` | Host directory where Antigravity OAuth tokens, project configs, and sidecar definitions persist. |
 | `<location-of-ssh>` | `/home/developer/.ssh` | *(Recommended)* Host directory persisting container-dedicated SSH keys and configs. |
 | `<location-of-gitconfig>` | `/home/developer/.gitconfig` | *(Optional)* Host file persisting container Git configuration. |
+| `<location-of-hooks>` | `/etc/entrypoint.d` | *(Optional)* Directory for custom startup initialization hooks (`*.sh` for sync, `async/*.sh` for async). |
 
 ---
 
@@ -276,6 +277,40 @@ optimizations into the Antigravity web app:
 - **Custom User Styles**: Add any custom CSS styling directly to
   `proxy/custom.css`. Styles are served with `no-cache` headers for immediate
   application.
+
+---
+
+## Initialization Hooks (`/etc/entrypoint.d/`)
+
+You can execute custom initialization scripts on container startup without rebuilding the base Docker image by mounting a directory to `/etc/entrypoint.d`.
+
+Hooks run as `root` before starting the daemon or dropping privileges:
+
+### 1. Synchronous Hooks (`/etc/entrypoint.d/*.sh`)
+- Any `*.sh` script placed directly in `/etc/entrypoint.d/` executes **synchronously** in alphanumeric sort order.
+- Startup blocks until all synchronous scripts finish.
+- Ideal for environment configuration, directory setup, or pre-launch checks.
+- If a hook exits with a non-zero exit code, an error warning is logged without aborting container startup.
+
+### 2. Asynchronous Hooks (`/etc/entrypoint.d/async/*.sh`)
+- Any `*.sh` script placed in `/etc/entrypoint.d/async/` is spawned in the background concurrently (`bash script.sh &`).
+- Startup continues immediately without waiting.
+- Ideal for background daemons, cache warmers, or long-running maintenance tasks.
+
+### Example Directory Structure
+```
+init-scripts/
+├── 01-setup-env.sh         # Runs synchronously on boot
+├── 02-seed-data.sh         # Runs synchronously after 01-setup-env.sh
+└── async/
+    └── 10-warm-cache.sh    # Spawns in background
+```
+
+Mount in `docker-compose.yml`:
+```yaml
+volumes:
+  - ./init-scripts:/etc/entrypoint.d:ro
+```
 
 ---
 

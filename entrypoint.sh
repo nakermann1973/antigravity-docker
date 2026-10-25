@@ -272,7 +272,23 @@ gosu "$DEVELOPER_USER" git config --global --add safe.directory "${WORKSPACE_DIR
 gosu "$DEVELOPER_USER" git config --global --add safe.directory "$GEMINI_DIR" 2>/dev/null || true
 gosu "$DEVELOPER_USER" git config --global --add safe.directory "$ANTIGRAVITY_DIR" 2>/dev/null || true
 
-# 5. Mode dispatch
+# 5. Start-Time Initialization Hooks (/etc/entrypoint.d/)
+for script in /etc/entrypoint.d/*.sh; do
+    if [ -f "$script" ]; then
+        hook_name="$(basename "$script")"
+        echo "[init-hooks] Running: $hook_name"
+        bash "$script" || echo "[init-hooks] Warning: $hook_name exited with code $?"
+    fi
+done
+
+for script in /etc/entrypoint.d/async/*.sh; do
+    if [ -f "$script" ]; then
+        echo "[init-hooks] Spawning async: $(basename "$script")"
+        bash "$script" &
+    fi
+done
+
+# 6. Mode dispatch
 case "$1" in
     setup)
         echo "==================================================================="

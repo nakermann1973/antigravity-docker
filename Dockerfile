@@ -74,10 +74,12 @@ ENV AGY_ENABLE_HUB="true" \
     ENABLE_IDE="false" \
     ENABLE_TERMINAL="false"
 
-# Create required directories for persistent storage and workspace
+# Create required directories for persistent storage, workspace, and initialization hooks
 USER root
 RUN mkdir -p /home/${USERNAME}/.gemini \
-             /workspace && \
+             /workspace \
+             /etc/entrypoint.d/async && \
+    chmod -R 755 /etc/entrypoint.d && \
     chown -R ${USERNAME}:${USERNAME} /home/${USERNAME} /workspace
 
 COPY assets/ /usr/local/share/antigravity/assets/
