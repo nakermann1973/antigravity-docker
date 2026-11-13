@@ -936,7 +936,7 @@ class SidecarManager extends EventEmitter {
             ...sidecar.env,
             HOME: HOME_DIR,
             ANTIGRAVITY_EXECUTABLE_DATA_DIR: dataDir,
-            ANTIGRAVITY_AGENTAPI_EXE: path.join(LOCAL_BIN_DIR, 'agy'),
+            ANTIGRAVITY_AGENTAPI_EXE: '/usr/local/bin/agy',
             PATH: pathEntries.join(':')
         };
         if (lsAddress && !env.ANTIGRAVITY_LS_ADDRESS) {

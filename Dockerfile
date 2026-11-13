@@ -60,13 +60,12 @@ RUN if id -u ubuntu >/dev/null 2>&1; then userdel -f -r ubuntu || true; fi && \
         usermod -l ${USERNAME} -d /home/${USERNAME} -m $(id -un ${USER_UID}); \
     fi
 
-# 5. Install Antigravity CLI (agy) for developer user
+# 5. Install Antigravity CLI (agy) to system-wide non-persistent path
+RUN curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /usr/local/bin
+
 USER ${USERNAME}
 ENV HOME=/home/${USERNAME}
 WORKDIR /home/${USERNAME}
-
-RUN mkdir -p /home/${USERNAME}/.local/bin && \
-    curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- --dir /home/${USERNAME}/.local/bin
 
 # Add ~/.local/bin and package manager binaries to PATH
 ENV PATH="/home/${USERNAME}/.gemini/antigravity-cli/bin:/home/${USERNAME}/.local/bin:/home/${USERNAME}/.cargo/bin:/home/${USERNAME}/.local/share/pnpm:${PATH}"
